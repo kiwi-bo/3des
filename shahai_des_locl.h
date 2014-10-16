@@ -2,14 +2,13 @@
  *  add lzp
  */
 
-#ifndef _DES_LOCAL_H_
-#define _DES_LOCAL_H_
+#ifndef _SHAHAI_DES_LOCAL_H_
+#define _SHAHAI_DES_LOCAL_H_
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include "shahai_e_os2.h"
-#include "shahai_des_locl.h"
 
 #define DES_ENCRYPT	1
 #define DES_DECRYPT	0
@@ -148,10 +147,12 @@ int do_des_ecb3_encrypt(unsigned char *p_in, unsigned char *p_out, int *p_out_le
 
 int do_des_ecb3_decode(unsigned char *p_in, unsigned char *p_out, int *p_out_len, unsigned char *key_temp);
 
-int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, unsigned char **p_cipher/*, unsigned char *rmk, unsigned char *rsk*/);
+int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, unsigned char *p_cipher/*, unsigned char *rmk, unsigned char *rsk*/);
 
-int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *ks, unsigned char **plain/*, unsigned char *rmk, unsigned char *rsk*/);
+int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *ks, unsigned char *plain/*, unsigned char *rmk, unsigned char *rsk*/);
 
 int cread_tesk_k(unsigned char **k_m, unsigned char **k_s);
+
 #endif
+
 

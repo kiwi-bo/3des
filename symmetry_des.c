@@ -5,18 +5,20 @@
 
 #include "shahai_des_locl.h"
 
-char original_key[61] = 
+
+
+char original_key[60] = 
 {
 	'1', '2' , '4', '5', '7', '5', '6', '7', '4', '8','1', '2' , '4', '5', '7', '5', '6', '7', '4', '8',
 	'6', '8' , '4', '5', '7', '5', '6', '7', '4', '0','1', '4' , '4', '5', '7', '2', '6', '7', '1', '6',
 	'1', '2' , '9', '9', '6', '5', '9', '7', '9', '8','1', '2' , '4', '1', '7', '5', '6', '7', '1', '5',
-	'\0'
 };
+/*extern char original_key[60];*/
 
-extern char original_key[61];
 /** 
- * 有原始秘钥original_key[61]得到真实的秘钥
- * o_key：原始的60位秘钥;  r_key：真实的24位秘钥
+ * 用原始秘钥original_key[60]得到真实的秘钥
+ * o_key：原始的60位秘钥(可以在调用时重新传入一个60位字符数组,作为原始秘钥);  r_key：得到真实的24位秘钥
+ *
  */
 int get_key(const unsigned char *o_key, unsigned char *r_key)
 {
@@ -227,10 +229,6 @@ int do_des_ecb3_decode(unsigned char *p_in, unsigned char *p_out, int *p_out_len
 		DES_set_key_unchecked((const_DES_cblock *)block_key, &ks1);
 
 		temp = (unsigned char *)&ks1;
-		printf("========\n");
-		for(i = 0; i < sizeof(DES_key_schedule); i++)
-			printf("%02x", *(temp + i));
-		printf("\n========\n");
 
 		memcpy(block_key, key + 8, 8);
 		DES_set_key_unchecked((const_DES_cblock *)block_key, &ks2);
@@ -269,7 +267,7 @@ int des_decode_k(unsigned char *km, unsigned char *ks)
 }
 
 /** 
- * km: 主密钥的密文;  ks:次秘钥的密文
+ * 
  * 先解析xml报文。 并且将各个数据进行解base64操作。然后按下面流程。
  * 1、key = 60 位(原始), (tk =  key[5,25),  ttk = tk+tk[0,4),  ttk是真实密钥)  get_key()函数得到ttk；
  * 2、设此时  "shahai_key_main"--> Km,  "shahai_key_sec"--> ks
@@ -280,9 +278,16 @@ int des_decode_k(unsigned char *km, unsigned char *ks)
  *    明文 plaintext .  主密钥rmk, 次密钥 rsk
  *    一层加密   byte [] firstEnStr = 3des(rsk,plaintext)
  *    二层加密   byte [] secEnStr = 3des(rmk,firstEnStr);
+ * 输入:  plaintext:明文数据;  km: 主密钥(被加密的主密钥密文);  ks:次秘钥(被加密的次密钥密文)
+ * 输出:  p_cipher：明文加密之后的密文数据
+ * demo:(调用要求)
+ * unsigned char *cipher = NULL;
+ * cipher = (unsigned char *)malloc(strlen(data) + 16);
+ * memset(cipher, 0, strlen(data) + 16);  //  两次加密最多密文最多比明文多16个字节;必须要做否则，可能造成错误
+ * do_main_des_encrypt(data, km, ks, cipher);
  *
  */
-int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, unsigned char **p_cipher/*, unsigned char *rmk, unsigned char *rsk*/)
+int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, unsigned char *p_cipher/*, unsigned char *rmk, unsigned char *rsk*/)
 {
 	unsigned int out_len;
 	unsigned char *rmk = NULL;
@@ -290,8 +295,6 @@ int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, un
 	unsigned char *firstEnStr = NULL;
 	unsigned char *secEnStr = NULL;
 	int ret;
-
-	int i;
 
 	unsigned char *ttk = (unsigned char *)malloc(LEN_OF_KEY + 1);
 	get_key(original_key, ttk);
@@ -302,10 +305,9 @@ int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, un
 		rmk = (unsigned char *)malloc(out_len + 1);
 	}
 	// 成功解密后返回DES_ENCRYPT_OK;并且解密之前primary_cipher_k密文长度24，解密之后也应该是24字节的明文
-	if(DES_ENCRYPT_OK != do_des_ecb3_decode(km, rmk, &out_len, ttk) || 24 != strlen(rmk))
+	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(km, rmk, &out_len, ttk)) || 24 != strlen(rmk))
 	{
-		printf("rmk decode error\n");
-		return DES_ENCRYPT_OK;
+		return ret;
 	}
 	
 	/*****  解密次秘钥密钥  *****/
@@ -345,19 +347,33 @@ int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, un
 	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_encrypt(firstEnStr, secEnStr, &out_len, rmk)))
 		return ret;
 
-	*p_cipher = secEnStr;
+	printf("sizeof(p_cipher)  == %d \n", strlen(p_cipher));
+	memset(p_cipher, 0, sizeof(p_cipher));
+	memcpy(p_cipher, secEnStr, strlen(secEnStr));
 
-	printf("\n encrypt secEnStr===================%d \n", strlen(secEnStr));
-	for(i = 0; i < strlen(secEnStr); i++)
-		printf("%02X", *(secEnStr + i));
 
-	printf("\n ===================% \n", strlen(secEnStr));
+
+// 	printf("\n encrypt secEnStr===================%d \n", strlen(secEnStr));
+// 	for(i = 0; i < strlen(secEnStr); i++)
+// 		printf("%02X", *(secEnStr + i));
+// 
+// 	printf("\n %d \n", strlen(secEnStr));
+
+	free(ttk);
+	free(rmk);
+	free(firstEnStr);
+	free(secEnStr);
 
 	return 0;
 }
 
-
-int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *ks, unsigned char **plain/*, unsigned char *rmk, unsigned char *rsk*/)
+/** 
+ * cipher:密文; km:主密钥(被加密之后的); ks:次秘钥(被加密之后的); plain:输出明文
+ * unsigned char *out_plain = NULL;
+ * out_plain = (unsigned char *)malloc(strlen(cipher));   
+ * 由于明文加密之前进行了补齐操作，所以密文长度大于明文长度;因此，解密得到的实际明文长度小于输入密文长度
+ */
+int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *ks, unsigned char *plain/*, unsigned char *rmk, unsigned char *rsk*/)
 {
 	unsigned int out_len;
 	unsigned char *rmk = NULL;
@@ -380,12 +396,11 @@ int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *k
 	{
 		rmk = (unsigned char *)malloc(out_len + 1);
 	}
-
 	// 成功解密后返回DES_ENCRYPT_OK;并且解密之前primary_cipher_k密文长度24，解密之后也应该是24字节的明文
-	if(DES_ENCRYPT_OK != do_des_ecb3_decode(km, rmk, &out_len, ttk) || 24 != strlen(rmk))
+	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(km, rmk, &out_len, ttk)) || 24 != strlen(rmk))
 	{
-		printf("rmk decode error\n");
-		return DES_ENCRYPT_OK;
+/*		printf("rmk decode error\n");*/
+		return ret;
 	}
 
 	/*****  解密次秘钥密钥  *****/
@@ -431,7 +446,13 @@ int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *k
 // 
 // 	printf("%s %d \n", plaintext, strlen(plaintext));
 
-	*plain = plaintext;
+	memset(plain, 0, strlen(plain));
+	memcpy(plain, plaintext, strlen(plaintext));
+
+	free(rmk);
+	free(rsk);
+	free(firstEnStr);
+	free(plaintext);
 
 	return 0;
 }
