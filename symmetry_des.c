@@ -7,11 +7,12 @@
 
 
 
-char original_key[60] = 
-{
-	'1', '2' , '4', '5', '7', '5', '6', '7', '4', '8','1', '2' , '4', '5', '7', '5', '6', '7', '4', '8',
-	'6', '8' , '4', '5', '7', '5', '6', '7', '4', '0','1', '4' , '4', '5', '7', '2', '6', '7', '1', '6',
-	'1', '2' , '9', '9', '6', '5', '9', '7', '9', '8','1', '2' , '4', '1', '7', '5', '6', '7', '1', '5',
+char original_key[61] = 
+{//123456789012345678901234567890123456789012345678901234567890
+	'1', '2' , '3', '4', '5', '6', '7', '8', '9', '0','1', '2' , '3', '4', '5', '6', '7', '8', '9', '0',
+	'1', '2' , '3', '4', '5', '6', '7', '8', '9', '0','1', '2' , '3', '4', '5', '6', '7', '8', '9', '0',
+	'1', '2' , '3', '4', '5', '6', '7', '8', '9', '0','1', '2' , '3', '4', '5', '6', '7', '8', '9', '0',
+	'\0'
 };
 /*extern char original_key[60];*/
 
@@ -169,10 +170,10 @@ int do_des_ecb3_encrypt(unsigned char *p_in, unsigned char *p_out, int *p_out_le
  * key:秘钥
  *
  */
-int do_des_ecb3_decode(unsigned char *p_in, unsigned char *p_out, int *p_out_len, unsigned char *key_temp)
+int do_des_ecb3_decode(const unsigned char *p_in, unsigned char *p_out, int *p_out_len, unsigned char *key_temp)
 {
 	unsigned int do_continue = 1;
-	unsigned char *data = p_in;
+	const unsigned char *data = p_in;
 	unsigned char *temp_ch = NULL;
 	unsigned int data_len;
 	unsigned int data_rest;
@@ -260,9 +261,70 @@ int do_des_ecb3_decode(unsigned char *p_in, unsigned char *p_out, int *p_out_len
 
 /** 
  * 解密 主、次秘钥
+ * km:主密钥(服务器传来的,已经做过base64解码);   km:次密钥(服务器传来的,已经做过base64解码)
+ * m_key:按照加密规则反解密出来的主密钥;    s_key:解密出来的次秘钥
+ *
  */
-int des_decode_k(unsigned char *km, unsigned char *ks)
+int des_decode_k(const unsigned char *km, const unsigned char *ks, unsigned char *m_key, unsigned char *s_key)
 {
+	unsigned int out_len;
+	unsigned char *rmk = NULL;
+	unsigned char *rsk = NULL;
+	int ret;
+
+	unsigned char *ttk = (unsigned char *)malloc(LEN_OF_KEY + 1);
+	get_key(original_key, ttk);
+
+	/*****  解密主密钥  *****/
+	if(OUT_IS_NULL == do_des_ecb3_decode(km, NULL, &out_len, ttk))
+	{
+		rmk = (unsigned char *)malloc(out_len + 1);
+	}
+
+
+	// 成功解密后返回DES_ENCRYPT_OK;并且解密之前primary_cipher_k密文长度24，解密之后也应该是24字节的明文
+	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(km, rmk, &out_len, ttk)) || 24 != strlen(rmk))
+	{
+		return ret;
+	}
+
+	/*****  解密次秘钥密钥  *****/
+	if(OUT_IS_NULL == do_des_ecb3_decode(ks, NULL, &out_len, rmk))
+	{
+		rsk = (unsigned char *)malloc(out_len + 1);
+	}
+	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(ks, rsk, &out_len, rmk)) || 24 != strlen(rsk))
+	{
+		return ret;
+	}
+
+
+	//memset(m_key, 0, strlen(m_key));
+	memcpy(m_key, rmk, strlen(rmk));
+
+	//memset(s_key, 0, strlen(s_key));
+	memcpy(s_key, rsk, strlen(rsk));
+
+
+
+	if (NULL != ttk)
+	{
+		free(ttk);
+		ttk = NULL;
+	}
+
+	if (NULL != rmk)
+	{
+		free(rmk);
+		rmk = NULL;
+	}
+
+	if (NULL != rsk)
+	{
+		free(rsk);
+		rsk = NULL;
+	}
+
 	return 0;
 }
 
@@ -287,7 +349,7 @@ int des_decode_k(unsigned char *km, unsigned char *ks)
  * do_main_des_encrypt(data, km, ks, cipher);
  *
  */
-int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, unsigned char *p_cipher/*, unsigned char *rmk, unsigned char *rsk*/)
+int do_main_des_encrypt(unsigned char *plaintext,unsigned char *km, unsigned char *ks, unsigned char *p_cipher)
 {
 	unsigned int out_len;
 	unsigned char *rmk = NULL;
@@ -296,29 +358,32 @@ int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, un
 	unsigned char *secEnStr = NULL;
 	int ret;
 
-	unsigned char *ttk = (unsigned char *)malloc(LEN_OF_KEY + 1);
-	get_key(original_key, ttk);
+	rmk = km;
+	rsk = ks;
 
-	/*****  解密主密钥  *****/
-	if(OUT_IS_NULL == do_des_ecb3_decode(km, NULL, &out_len, ttk))
-	{
-		rmk = (unsigned char *)malloc(out_len + 1);
-	}
-	// 成功解密后返回DES_ENCRYPT_OK;并且解密之前primary_cipher_k密文长度24，解密之后也应该是24字节的明文
-	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(km, rmk, &out_len, ttk)) || 24 != strlen(rmk))
-	{
-		return ret;
-	}
-	
-	/*****  解密次秘钥密钥  *****/
-	if(OUT_IS_NULL == do_des_ecb3_decode(ks, NULL, &out_len, rmk))
-	{
-		rsk = (unsigned char *)malloc(out_len + 1);
-	}
-	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(ks, rsk, &out_len, rmk)) || 24 != strlen(rsk))
-	{
-		return ret;
-	}
+// 	unsigned char *ttk = (unsigned char *)malloc(LEN_OF_KEY + 1);
+// 	get_key(original_key, ttk);
+// 
+// 	/*****  解密主密钥  *****/
+// 	if(OUT_IS_NULL == do_des_ecb3_decode(km, NULL, &out_len, ttk))
+// 	{
+// 		rmk = (unsigned char *)malloc(out_len + 1);
+// 	}
+// 	// 成功解密后返回DES_ENCRYPT_OK;并且解密之前primary_cipher_k密文长度24，解密之后也应该是24字节的明文
+// 	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(km, rmk, &out_len, ttk)) || 24 != strlen(rmk))
+// 	{
+// 		return ret;
+// 	}
+// 	
+// 	/*****  解密次秘钥密钥  *****/
+// 	if(OUT_IS_NULL == do_des_ecb3_decode(ks, NULL, &out_len, rmk))
+// 	{
+// 		rsk = (unsigned char *)malloc(out_len + 1);
+// 	}
+// 	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(ks, rsk, &out_len, rmk)) || 24 != strlen(rsk))
+// 	{
+// 		return ret;
+// 	}
 
 // 	printf("\nencrypt   ttk ==> %s \n", ttk);
 // 	printf("24 != strlen(rmk) |%d| |%s| \n",strlen(rmk), rmk);
@@ -359,8 +424,8 @@ int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, un
 // 
 // 	printf("\n %d \n", strlen(secEnStr));
 
-	free(ttk);
-	free(rmk);
+// 	free(ttk);
+// 	free(rmk);
 	free(firstEnStr);
 	free(secEnStr);
 
@@ -382,34 +447,38 @@ int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *k
 	unsigned char *plaintext = NULL;
 	unsigned char *ttk = (unsigned char *)malloc(LEN_OF_KEY + 1);
 
-	int ret;
 
-	get_key(original_key, ttk);
+	int ret;
+	rmk = km;
+	rsk = ks;
+
+
+/*	get_key(original_key, ttk);*/
 	
 // 	printf("\ncipher  decode    %d \n",strlen(cipher));
 // 	for(i = 0; i < strlen(cipher); i++)
 // 		printf("%02X", *(cipher + i));
 
 
-	/*****  解密主密钥  *****/
-	if(OUT_IS_NULL == do_des_ecb3_decode(km, NULL, &out_len, ttk))
-	{
-		rmk = (unsigned char *)malloc(out_len + 1);
-	}
-	// 成功解密后返回DES_ENCRYPT_OK;并且解密之前primary_cipher_k密文长度24，解密之后也应该是24字节的明文
-	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(km, rmk, &out_len, ttk)) || 24 != strlen(rmk))
-	{
-/*		printf("rmk decode error\n");*/
-		return ret;
-	}
-
-	/*****  解密次秘钥密钥  *****/
-	if(OUT_IS_NULL == do_des_ecb3_decode(ks, NULL, &out_len, rmk))
-	{
-		rsk = (unsigned char *)malloc(out_len + 1);
-	}
-	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(ks, rsk, &out_len, rmk)) || 24 != strlen(rsk))
-		return ret;
+// 	/*****  解密主密钥  *****/
+// 	if(OUT_IS_NULL == do_des_ecb3_decode(km, NULL, &out_len, ttk))
+// 	{
+// 		rmk = (unsigned char *)malloc(out_len + 1);
+// 	}
+// 	// 成功解密后返回DES_ENCRYPT_OK;并且解密之前primary_cipher_k密文长度24，解密之后也应该是24字节的明文
+// 	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(km, rmk, &out_len, ttk)) || 24 != strlen(rmk))
+// 	{
+// /*		printf("rmk decode error\n");*/
+// 		return ret;
+// 	}
+// 
+// 	/*****  解密次秘钥密钥  *****/
+// 	if(OUT_IS_NULL == do_des_ecb3_decode(ks, NULL, &out_len, rmk))
+// 	{
+// 		rsk = (unsigned char *)malloc(out_len + 1);
+// 	}
+// 	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_decode(ks, rsk, &out_len, rmk)) || 24 != strlen(rsk))
+// 		return ret;
 
 // 	printf("\nttk ==> %s \n", ttk);
 // 	printf("24 != strlen(rmk) |%d| |%s| \n",strlen(rmk), rmk);
@@ -449,8 +518,9 @@ int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *k
 	memset(plain, 0, strlen(plain));
 	memcpy(plain, plaintext, strlen(plaintext));
 
-	free(rmk);
-	free(rsk);
+	free(ttk);
+// 	free(rmk);
+// 	free(rsk);
 	free(firstEnStr);
 	free(plaintext);
 
@@ -466,7 +536,12 @@ int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *k
  * 4、先还原主密钥   byte [] rmk = 3des(ttk, km);
  * 5、次密钥： byte [] rsk=3des(rmk,ks)
  */
-int cread_tesk_k(unsigned char **k_m, unsigned char **k_s)
+
+/**
+ * 测试用代码,按照规则创建两个测试用 主次秘钥
+ *
+ */
+int cread_tesk_k(unsigned char *k_m, unsigned char *k_s)
 {
 	unsigned char *tkm = "123456788765432112345678";
 	unsigned char *tks = "876543211234567887654321";
@@ -497,8 +572,15 @@ int cread_tesk_k(unsigned char **k_m, unsigned char **k_s)
 	if(DES_ENCRYPT_OK != (ret = do_des_ecb3_encrypt(tks, ks, &out_len, tkm)))
 		return ret;
 
-	*k_m = km;
-	*k_s = ks;
+	printf("%d | %d \n", strlen(km), strlen(ks));
+	memcpy(k_m, km, strlen(km));
+	memcpy(k_s, ks, strlen(ks));
+
+	
+	
+	free(ttk);
+	free(km);
+	free(ks);
 
 	return 0;
 }

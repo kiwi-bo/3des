@@ -139,19 +139,22 @@ void DES_ecb3_encrypt(const_DES_cblock *input, DES_cblock *output, DES_key_sched
 
 
 // add lzp
+
 int get_key(const unsigned char *o_key, unsigned char *r_key);
 
 int DES_Encrypt(unsigned char *p_in, unsigned char *primary_key, unsigned char *secondary_key, unsigned char *p_cipher);
 
 int do_des_ecb3_encrypt(unsigned char *p_in, unsigned char *p_out, int *p_out_len, unsigned char *key_temp);
 
-int do_des_ecb3_decode(unsigned char *p_in, unsigned char *p_out, int *p_out_len, unsigned char *key_temp);
+int do_des_ecb3_decode(const unsigned char *p_in, unsigned char *p_out, int *p_out_len, unsigned char *key_temp);
 
-int do_main_des_encrypt(char *plaintext,unsigned char *km, unsigned char *ks, unsigned char *p_cipher/*, unsigned char *rmk, unsigned char *rsk*/);
+int do_main_des_encrypt(unsigned char *plaintext,unsigned char *km, unsigned char *ks, unsigned char *p_cipher/*, unsigned char *rmk, unsigned char *rsk*/);
 
 int do_main_des_decode(unsigned char *cipher,unsigned char *km, unsigned char *ks, unsigned char *plain/*, unsigned char *rmk, unsigned char *rsk*/);
 
-int cread_tesk_k(unsigned char **k_m, unsigned char **k_s);
+int cread_tesk_k(unsigned char *k_m, unsigned char *k_s);
+
+int des_decode_k(const unsigned char *km, const unsigned char *ks, unsigned char *m_key, unsigned char *s_key);
 
 #endif
 
